@@ -1,0 +1,256 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { Download, DownloadStatus } from './downloads.entity';
+import { QueryDownloadsDto } from './dto/query-downloads.dto';
+import { Language } from '../languages/languages.entity';
+import { KiwixService } from '../kiwix/kiwix.service';
+import { ZimCatalogService } from '../zim-catalog/zim-catalog.service';
+import { SettingsService } from '../settings/settings.service';
+import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
+import * as path from 'path';
+
+@Injectable()
+export class DownloadsService {
+  private readonly logger = new Logger(DownloadsService.name);
+  private readonly zimDataPath: string;
+  private isDownloading = false;
+
+  constructor(
+    @InjectRepository(Download)
+    private readonly downloadRepo: Repository<Download>,
+    @InjectRepository(Language)
+    private readonly languageRepo: Repository<Language>,
+    private readonly config: ConfigService,
+    private readonly kiwixService: KiwixService,
+    private readonly zimCatalogService: ZimCatalogService,
+    private readonly settingsService: SettingsService,
+  ) {
+    this.zimDataPath = this.config.get<string>('zimDataPath')!;
+  }
+
+  async findAll(
+    query: QueryDownloadsDto,
+  ): Promise<{ data: Download[]; total: number }> {
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+
+    const qb = this.downloadRepo
+      .createQueryBuilder('download')
+      .leftJoinAndSelect('download.language', 'language')
+      .orderBy('download.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (query.languageId) {
+      qb.andWhere('download.languageId = :languageId', {
+        languageId: query.languageId,
+      });
+    }
+    if (query.status) {
+      qb.andWhere('download.status = :status', { status: query.status });
+    }
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total };
+  }
+
+  async activate(id: number): Promise<Download> {
+    const download = await this.downloadRepo.findOne({
+      where: { id },
+      relations: ['language'],
+    });
+    if (!download) throw new NotFoundException(`Download #${id} not found`);
+    if (download.status !== DownloadStatus.COMPLETED) {
+      throw new BadRequestException('Can only activate completed downloads');
+    }
+
+    await this.downloadRepo.update(
+      { languageId: download.languageId, isActive: true },
+      { isActive: false },
+    );
+    download.isActive = true;
+    await this.downloadRepo.save(download);
+
+    const symlinkPath = path.join(
+      this.zimDataPath,
+      download.language.code,
+      'active.zim',
+    );
+    await fs.rm(symlinkPath, { force: true });
+    await fs.symlink(
+      path.join(this.zimDataPath, download.filePath),
+      symlinkPath,
+    );
+
+    const allActive = await this.downloadRepo.find({
+      where: { isActive: true },
+      relations: ['language'],
+    });
+    await this.kiwixService.restart(allActive.map((d) => d.filePath));
+
+    return download;
+  }
+
+  async remove(id: number): Promise<void> {
+    const download = await this.downloadRepo.findOneBy({ id });
+    if (!download) throw new NotFoundException(`Download #${id} not found`);
+    if (download.isActive) {
+      throw new BadRequestException('Cannot delete the active download');
+    }
+
+    const fullPath = path.join(this.zimDataPath, download.filePath);
+    await fs.rm(fullPath, { force: true });
+    await this.downloadRepo.remove(download);
+  }
+
+  async triggerDownloads(): Promise<void> {
+    if (this.isDownloading) {
+      this.logger.warn('Download already in progress, skipping');
+      return;
+    }
+
+    const languages = await this.languageRepo.find({
+      where: { enabled: true },
+    });
+
+    for (const lang of languages) {
+      await this.downloadForLanguage(lang);
+    }
+  }
+
+  private async downloadForLanguage(lang: Language): Promise<void> {
+    this.isDownloading = true;
+
+    try {
+      const available = await this.zimCatalogService.getAvailable(lang.code);
+      const variant = lang.withImages
+        ? available.find((e) => e.hasImages)
+        : available.find((e) => !e.hasImages);
+
+      if (!variant) {
+        this.logger.warn(`No ZIM file found for ${lang.code}`);
+        return;
+      }
+
+      const existing = await this.downloadRepo.findOne({
+        where: {
+          languageId: lang.id,
+          fileName: variant.fileName,
+          status: DownloadStatus.COMPLETED,
+        },
+      });
+      if (existing) {
+        this.logger.log(`Already have ${variant.fileName}, skipping`);
+        return;
+      }
+
+      const filePath = path.join(lang.code, variant.fileName);
+      const fullPath = path.join(this.zimDataPath, filePath);
+
+      await fs.mkdir(path.dirname(fullPath), { recursive: true });
+
+      const download = await this.downloadRepo.save({
+        languageId: lang.id,
+        fileName: variant.fileName,
+        filePath,
+        status: DownloadStatus.DOWNLOADING,
+        startedAt: new Date(),
+      });
+
+      try {
+        const response = await fetch(variant.url);
+        if (!response.ok || !response.body) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const totalSize = parseInt(
+          response.headers.get('content-length') || '0',
+          10,
+        );
+        let downloadedSize = 0;
+        let lastProgressUpdate = 0;
+
+        const fileStream = fsSync.createWriteStream(fullPath);
+        const reader = response.body.getReader();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          fileStream.write(value);
+          downloadedSize += value.length;
+
+          if (totalSize > 0) {
+            const progress = Math.floor((downloadedSize / totalSize) * 100);
+            if (progress - lastProgressUpdate >= 5) {
+              await this.downloadRepo.update(download.id, { progress });
+              lastProgressUpdate = progress;
+            }
+          }
+        }
+
+        fileStream.end();
+        await new Promise<void>((resolve) => fileStream.on('finish', resolve));
+
+        const stat = await fs.stat(fullPath);
+        await this.downloadRepo.update(download.id, {
+          status: DownloadStatus.COMPLETED,
+          progress: 100,
+          fileSize: stat.size,
+          completedAt: new Date(),
+        });
+
+        this.logger.log(`Downloaded ${variant.fileName}`);
+        await this.cleanupOldVersions(lang.id);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await this.downloadRepo.update(download.id, {
+          status: DownloadStatus.FAILED,
+          errorMessage: message,
+        });
+        await fs.rm(fullPath, { force: true });
+        this.logger.error(`Failed to download ${variant.fileName}: ${message}`);
+      }
+    } finally {
+      this.isDownloading = false;
+    }
+  }
+
+  private async cleanupOldVersions(languageId: number): Promise<void> {
+    const settings = await this.settingsService.get();
+    const maxVersions = settings.maxVersionsToKeep;
+
+    const completed = await this.downloadRepo.find({
+      where: { languageId, status: DownloadStatus.COMPLETED },
+      order: { completedAt: 'DESC' },
+    });
+    if (completed.length <= maxVersions) return;
+
+    const toDelete = completed.slice(maxVersions).filter((d) => !d.isActive);
+    for (const dl of toDelete) {
+      const fullPath = path.join(this.zimDataPath, dl.filePath);
+      await fs.rm(fullPath, { force: true });
+      await this.downloadRepo.remove(dl);
+      this.logger.log(`Cleaned up old version: ${dl.fileName}`);
+    }
+  }
+
+  async getDiskUsage(): Promise<number> {
+    let total = 0;
+    const downloads = await this.downloadRepo.find({
+      where: { status: DownloadStatus.COMPLETED },
+    });
+    for (const dl of downloads) {
+      total += Number(dl.fileSize);
+    }
+    return total;
+  }
+}
