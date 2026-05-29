@@ -17,14 +17,29 @@ export class ZimCatalogService {
   private readonly baseUrl = 'https://download.kiwix.org/zim/wikipedia';
 
   async getAvailable(lang: string): Promise<ZimEntry[]> {
-    let html: string;
+    const html = await this.fetchListing();
+    return this.parseDirectoryListing(html, lang);
+  }
+
+  async getLanguages(): Promise<string[]> {
+    const html = await this.fetchListing();
+    const regex = /<a href="wikipedia_([^_"]+)_[^"]+\.zim">/g;
+    const langs = new Set<string>();
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(html)) !== null) {
+      langs.add(match[1]);
+    }
+    return [...langs].sort();
+  }
+
+  private async fetchListing(): Promise<string> {
     try {
       const response = await fetch(`${this.baseUrl}/`);
       if (!response.ok) {
         this.logger.error(`Kiwix catalog returned ${response.status}`);
         throw new ServiceUnavailableException('Kiwix catalog unavailable');
       }
-      html = await response.text();
+      return await response.text();
     } catch (err) {
       if (err instanceof ServiceUnavailableException) throw err;
       this.logger.error(
@@ -32,7 +47,6 @@ export class ZimCatalogService {
       );
       throw new ServiceUnavailableException('Kiwix catalog unreachable');
     }
-    return this.parseDirectoryListing(html, lang);
   }
 
   parseDirectoryListing(html: string, lang: string): ZimEntry[] {

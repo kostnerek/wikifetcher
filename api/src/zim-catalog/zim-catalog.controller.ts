@@ -10,4 +10,9 @@ export class ZimCatalogController {
   getAvailable(@Query() query: AvailableQueryDto) {
     return this.zimCatalogService.getAvailable(query.lang);
   }
+
+  @Get('languages')
+  getLanguages() {
+    return this.zimCatalogService.getLanguages();
+  }
 }

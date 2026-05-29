@@ -66,5 +66,6 @@ export const api = {
   zim: {
     available: (lang: string) =>
       request<ZimEntry[]>(`/zim/available?lang=${lang}`),
+    languages: () => request<string[]>('/zim/languages'),
   },
 };
