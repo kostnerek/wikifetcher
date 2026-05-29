@@ -10,6 +10,10 @@ describe('KiwixService', () => {
       const map: Record<string, string> = {
         kiwixContainerName: 'kiwix-serve',
         zimDataPath: '/data/zim',
+        kiwixImage: 'ghcr.io/kiwix/kiwix-serve',
+        kiwixPort: '8080',
+        zimVolumePath: 'wikifetcher_zim-data',
+        dockerNetwork: 'wikifetcher_default',
       };
       return map[key];
     }),
@@ -37,5 +41,15 @@ describe('KiwixService', () => {
       '/data/zim/en/wikipedia_en.zim',
       '/data/zim/pl/wikipedia_pl.zim',
     ]);
+  });
+
+  it('getStatus returns not_found when the container is missing', async () => {
+    (service as any).docker = {
+      getContainer: () => ({
+        inspect: () => Promise.reject(new Error('no such container')),
+      }),
+    };
+    const status = await service.getStatus();
+    expect(status).toEqual({ running: false, state: 'not_found' });
   });
 });
