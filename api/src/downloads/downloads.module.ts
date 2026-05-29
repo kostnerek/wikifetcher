@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Download } from './downloads.entity';
 import { Language } from '../languages/languages.entity';
@@ -13,7 +13,7 @@ import { SettingsModule } from '../settings/settings.module';
     TypeOrmModule.forFeature([Download, Language]),
     KiwixModule,
     ZimCatalogModule,
-    SettingsModule,
+    forwardRef(() => SettingsModule),
   ],
   controllers: [DownloadsController],
   providers: [DownloadsService],

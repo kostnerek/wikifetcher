@@ -1,5 +1,6 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
+import { ConfigService } from '@nestjs/config';
 import { CronJob } from 'cron';
 import { SettingsService } from '../settings/settings.service';
 import { DownloadsService } from '../downloads/downloads.service';
@@ -11,13 +12,21 @@ export class SchedulerService implements OnModuleInit {
 
   constructor(
     private readonly schedulerRegistry: SchedulerRegistry,
+    @Inject(forwardRef(() => SettingsService))
     private readonly settingsService: SettingsService,
     private readonly downloadsService: DownloadsService,
+    private readonly config: ConfigService,
   ) {}
 
   async onModuleInit() {
-    const settings = await this.settingsService.get();
-    this.registerCronJob(settings.cronExpression);
+    let cronExpression: string;
+    try {
+      const settings = await this.settingsService.get();
+      cronExpression = settings.cronExpression;
+    } catch {
+      cronExpression = this.config.get<string>('defaultCron')!;
+    }
+    this.registerCronJob(cronExpression);
   }
 
   registerCronJob(cronExpression: string) {

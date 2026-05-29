@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -33,6 +35,7 @@ export class DownloadsService {
     private readonly config: ConfigService,
     private readonly kiwixService: KiwixService,
     private readonly zimCatalogService: ZimCatalogService,
+    @Inject(forwardRef(() => SettingsService))
     private readonly settingsService: SettingsService,
   ) {
     this.zimDataPath = this.config.get<string>('zimDataPath')!;
