@@ -27,8 +27,18 @@ cp .env.example .env   # optional — defaults are fine
 docker compose up -d
 ```
 
+This pulls the latest released images from `ghcr.io/kostnerek/wikifetcher-{api,ui}`. Pin a version by setting `WIKIFETCHER_VERSION=0.1.0` in `.env`.
+
 - Admin panel: <http://localhost:8081>
 - Kiwix reader: <http://localhost:8080> (404 until you download and activate a ZIM)
+
+### Building from source
+
+To run with locally-built images instead of GHCR (e.g. when developing):
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --build
+```
 
 From the admin panel: add a language, optionally toggle "with images", and either hit **Trigger Download Now** or wait for the cron schedule. Once a file finishes downloading, click **Activate** to serve it through Kiwix.
 

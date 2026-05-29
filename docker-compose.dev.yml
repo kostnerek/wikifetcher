@@ -1,6 +1,6 @@
 services:
   wikifetcher-api:
-    image: ghcr.io/kostnerek/wikifetcher-api:${WIKIFETCHER_VERSION:-latest}
+    build: ./api
     container_name: wikifetcher-api
     restart: unless-stopped
     environment:
@@ -20,7 +20,7 @@ services:
       - "3000"
 
   wikifetcher-ui:
-    image: ghcr.io/kostnerek/wikifetcher-ui:${WIKIFETCHER_VERSION:-latest}
+    build: ./ui
     container_name: wikifetcher-ui
     restart: unless-stopped
     ports:
