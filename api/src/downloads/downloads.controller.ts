@@ -6,12 +6,16 @@ import {
   Param,
   Query,
   ParseIntPipe,
+  HttpCode,
+  Logger,
 } from '@nestjs/common';
 import { DownloadsService } from './downloads.service';
 import { QueryDownloadsDto } from './dto/query-downloads.dto';
 
 @Controller('api/downloads')
 export class DownloadsController {
+  private readonly logger = new Logger(DownloadsController.name);
+
   constructor(private readonly downloadsService: DownloadsService) {}
 
   @Get()
@@ -20,8 +24,11 @@ export class DownloadsController {
   }
 
   @Post('trigger')
+  @HttpCode(202)
   trigger() {
-    return this.downloadsService.triggerDownloads();
+    this.downloadsService.triggerDownloads().catch((err) => {
+      this.logger.error(`triggerDownloads failed: ${(err as Error).message}`);
+    });
   }
 
   @Post(':id/activate')

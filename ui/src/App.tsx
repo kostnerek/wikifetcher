@@ -58,7 +58,10 @@ export default function App() {
     setDownloading(true);
     try {
       await api.downloads.trigger();
-      await loadDownloads();
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        await loadDownloads();
+      }
     } finally {
       setDownloading(false);
     }

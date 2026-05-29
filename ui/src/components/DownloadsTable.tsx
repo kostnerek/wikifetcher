@@ -92,8 +92,9 @@ export function DownloadsTable({ downloads, onRefresh }: DownloadsTableProps) {
   const handleDelete = async (d: Download) => {
     if (!confirm(`Delete ${d.fileName}?`)) return;
     setDeletingIds((s) => new Set(s).add(d.id));
+    const minVisible = new Promise((r) => setTimeout(r, 800));
     try {
-      await api.downloads.remove(d.id);
+      await Promise.all([api.downloads.remove(d.id), minVisible]);
       onRefresh();
     } finally {
       setDeletingIds((s) => {
@@ -128,7 +129,11 @@ export function DownloadsTable({ downloads, onRefresh }: DownloadsTableProps) {
           </tr>
         </thead>
         <tbody>
-          {active.map((d) => (
+          {active.map((d) => {
+            const effectiveStatus: Download['status'] = deletingIds.has(d.id)
+              ? 'deleting'
+              : d.status;
+            return (
             <tr key={d.id} className="border-b border-gray-100">
               <td className="py-2">
                 <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">
@@ -141,7 +146,7 @@ export function DownloadsTable({ downloads, onRefresh }: DownloadsTableProps) {
               </td>
               <td className="py-2">
                 <div className="flex items-center gap-2">
-                  {statusBadge(d.status)}
+                  {statusBadge(effectiveStatus)}
                   {d.isActive && (
                     <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                       active
@@ -199,7 +204,8 @@ export function DownloadsTable({ downloads, onRefresh }: DownloadsTableProps) {
                 </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
