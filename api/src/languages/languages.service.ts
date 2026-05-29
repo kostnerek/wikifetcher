@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Language } from './languages.entity';
+import { Download, DownloadStatus } from '../downloads/downloads.entity';
 import { CreateLanguageDto } from './dto/create-language.dto';
 import { UpdateLanguageDto } from './dto/update-language.dto';
 import * as fs from 'fs/promises';
@@ -13,6 +14,8 @@ export class LanguagesService {
   constructor(
     @InjectRepository(Language)
     private readonly repo: Repository<Language>,
+    @InjectRepository(Download)
+    private readonly downloadRepo: Repository<Download>,
     private readonly config: ConfigService,
   ) {}
 
@@ -50,11 +53,22 @@ export class LanguagesService {
 
   async remove(id: number): Promise<void> {
     const language = await this.findOne(id);
-    const langDir = path.join(
-      this.config.get<string>('zimDataPath')!,
-      language.code,
+    const zimDataPath = this.config.get<string>('zimDataPath')!;
+
+    await this.downloadRepo.update(
+      { languageId: id },
+      { status: DownloadStatus.DELETING, isActive: false },
     );
-    await this.repo.remove(language);
+
+    const downloads = await this.downloadRepo.find({ where: { languageId: id } });
+    for (const dl of downloads) {
+      const fullPath = path.join(zimDataPath, dl.filePath);
+      await fs.rm(fullPath, { force: true });
+      await this.downloadRepo.remove(dl);
+    }
+
+    const langDir = path.join(zimDataPath, language.code);
     await fs.rm(langDir, { recursive: true, force: true });
+    await this.repo.remove(language);
   }
 }

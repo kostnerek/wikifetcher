@@ -67,6 +67,15 @@ export default function App() {
     }
   };
 
+  const handleLanguagesChanged = useCallback(async () => {
+    await loadLanguages();
+    await loadDownloads();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      await loadDownloads();
+    }
+  }, [loadLanguages, loadDownloads]);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -88,7 +97,10 @@ export default function App() {
 
         <div className="bg-white rounded-lg shadow p-4 sm:p-6">
           <h2 className="text-lg font-semibold mb-4">Languages</h2>
-          <LanguageList languages={languages} onRefresh={loadLanguages} />
+          <LanguageList
+            languages={languages}
+            onRefresh={handleLanguagesChanged}
+          />
           <AddLanguage
             existingCodes={languages.map((l) => l.code)}
             onAdded={loadLanguages}

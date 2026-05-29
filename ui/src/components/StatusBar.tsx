@@ -35,8 +35,8 @@ export function StatusBar({
 
   return (
     <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex flex-wrap gap-4 sm:gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="flex-1 space-y-2">
           <div className="flex items-center gap-2">
             <div
               className={`w-3 h-3 rounded-full ${
@@ -48,22 +48,27 @@ export function StatusBar({
             </span>
           </div>
 
-          {kiwixStatus?.activeFiles.map((f) => (
-            <span key={f.languageCode} className="text-sm text-gray-600">
-              {f.language}: {f.fileName} ({formatBytes(f.fileSize)})
-            </span>
-          ))}
-
-          {settings?.nextRun && (
-            <span className="text-sm text-gray-600">
-              Next download:{' '}
-              {new Date(settings.nextRun).toLocaleString()}
-            </span>
+          {kiwixStatus?.activeFiles && kiwixStatus.activeFiles.length > 0 && (
+            <ul className="pl-5 space-y-0.5">
+              {kiwixStatus.activeFiles.map((f) => (
+                <li key={f.languageCode} className="text-sm text-gray-600">
+                  {f.language}: {f.fileName} ({formatBytes(f.fileSize)})
+                </li>
+              ))}
+            </ul>
           )}
 
-          <span className="text-sm text-gray-600">
-            Disk: {formatBytes(diskUsage)}
-          </span>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 pt-1">
+            {settings?.nextRun && (
+              <span className="text-sm text-gray-600">
+                Next download:{' '}
+                {new Date(settings.nextRun).toLocaleString()}
+              </span>
+            )}
+            <span className="text-sm text-gray-600">
+              Disk: {formatBytes(diskUsage)}
+            </span>
+          </div>
         </div>
 
         <button
