@@ -47,13 +47,13 @@ export class Download {
   @Column({ name: 'is_active', default: false })
   isActive: boolean;
 
-  @Column({ name: 'error_message', nullable: true })
+  @Column({ name: 'error_message', type: 'text', nullable: true })
   errorMessage: string | null;
 
-  @Column({ name: 'started_at', nullable: true })
+  @Column({ name: 'started_at', type: 'datetime', nullable: true })
   startedAt: Date | null;
 
-  @Column({ name: 'completed_at', nullable: true })
+  @Column({ name: 'completed_at', type: 'datetime', nullable: true })
   completedAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
