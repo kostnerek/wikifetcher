@@ -9,6 +9,11 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+function formatSpeed(bps: number | null): string | null {
+  if (bps == null || bps <= 0) return null;
+  return `${formatBytes(bps)}/s`;
+}
+
 function statusBadge(status: Download['status']) {
   const colors = {
     pending: 'bg-yellow-100 text-yellow-800',
@@ -94,12 +99,18 @@ export function DownloadsTable({ downloads, onRefresh }: DownloadsTableProps) {
                   )}
                 </div>
                 {d.status === 'downloading' && (
-                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                    <div
-                      className="bg-blue-600 h-1.5 rounded-full transition-all"
-                      style={{ width: `${d.progress}%` }}
-                    />
-                  </div>
+                  <>
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                      <div
+                        className="bg-blue-600 h-1.5 rounded-full transition-all"
+                        style={{ width: `${d.progress}%` }}
+                      />
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {d.progress}%
+                      {formatSpeed(d.speedBps) && ` · ${formatSpeed(d.speedBps)}`}
+                    </div>
+                  </>
                 )}
               </td>
               <td className="py-2 hidden sm:table-cell text-gray-500">

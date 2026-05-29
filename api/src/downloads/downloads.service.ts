@@ -200,6 +200,8 @@ export class DownloadsService {
       );
       let downloadedSize = 0;
       let lastProgressUpdate = 0;
+      let lastSampleBytes = 0;
+      let lastSampleTime = Date.now();
 
       const progressTracker = new Transform({
         transform: (chunk: Buffer, _enc, cb) => {
@@ -208,8 +210,18 @@ export class DownloadsService {
             const progress = Math.floor((downloadedSize / totalSize) * 100);
             if (progress - lastProgressUpdate >= 5) {
               lastProgressUpdate = progress;
+              const now = Date.now();
+              const elapsedMs = now - lastSampleTime;
+              const speedBps =
+                elapsedMs > 0
+                  ? Math.round(
+                      ((downloadedSize - lastSampleBytes) * 1000) / elapsedMs,
+                    )
+                  : null;
+              lastSampleBytes = downloadedSize;
+              lastSampleTime = now;
               this.downloadRepo
-                .update(download.id, { progress })
+                .update(download.id, { progress, speedBps })
                 .catch((err) =>
                   this.logger.warn(
                     `progress update failed: ${(err as Error).message}`,
@@ -231,6 +243,7 @@ export class DownloadsService {
       await this.downloadRepo.update(download.id, {
         status: DownloadStatus.COMPLETED,
         progress: 100,
+        speedBps: null,
         fileSize: stat.size,
         completedAt: new Date(),
       });
@@ -241,6 +254,7 @@ export class DownloadsService {
       const message = err instanceof Error ? err.message : String(err);
       await this.downloadRepo.update(download.id, {
         status: DownloadStatus.FAILED,
+        speedBps: null,
         errorMessage: message,
       });
       await fs.rm(fullPath, { force: true });

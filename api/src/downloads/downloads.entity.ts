@@ -44,6 +44,9 @@ export class Download {
   @Column({ default: 0 })
   progress: number;
 
+  @Column({ name: 'speed_bps', type: 'bigint', nullable: true })
+  speedBps: number | null;
+
   @Column({ name: 'is_active', default: false })
   isActive: boolean;
 
