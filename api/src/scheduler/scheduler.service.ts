@@ -27,7 +27,11 @@ export class SchedulerService implements OnModuleInit {
 
     const job = new CronJob(cronExpression, () => {
       this.logger.log('Scheduled download triggered');
-      this.downloadsService.triggerDownloads();
+      this.downloadsService.triggerDownloads().catch((err) => {
+        this.logger.error(
+          `Scheduled download failed: ${(err as Error).message}`,
+        );
+      });
     });
 
     this.schedulerRegistry.addCronJob(SchedulerService.JOB_NAME, job);
