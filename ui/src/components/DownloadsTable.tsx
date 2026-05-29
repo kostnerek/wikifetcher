@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Download } from '../types';
 import { api } from '../api';
 
@@ -12,6 +13,31 @@ function formatBytes(bytes: number): string {
 function formatSpeed(bps: number | null): string | null {
   if (bps == null || bps <= 0) return null;
   return `${formatBytes(bps)}/s`;
+}
+
+function Spinner() {
+  return (
+    <svg
+      className="animate-spin h-3 w-3 text-current"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+      />
+    </svg>
+  );
 }
 
 function statusBadge(status: Download['status']) {
@@ -36,6 +62,9 @@ interface DownloadsTableProps {
 }
 
 export function DownloadsTable({ downloads, onRefresh }: DownloadsTableProps) {
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [activatingIds, setActivatingIds] = useState<Set<number>>(new Set());
+
   const active = downloads.filter(
     (d) =>
       d.status === 'completed' ||
@@ -44,14 +73,32 @@ export function DownloadsTable({ downloads, onRefresh }: DownloadsTableProps) {
   );
 
   const handleActivate = async (id: number) => {
-    await api.downloads.activate(id);
-    onRefresh();
+    setActivatingIds((s) => new Set(s).add(id));
+    try {
+      await api.downloads.activate(id);
+      onRefresh();
+    } finally {
+      setActivatingIds((s) => {
+        const next = new Set(s);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   const handleDelete = async (d: Download) => {
     if (!confirm(`Delete ${d.fileName}?`)) return;
-    await api.downloads.remove(d.id);
-    onRefresh();
+    setDeletingIds((s) => new Set(s).add(d.id));
+    try {
+      await api.downloads.remove(d.id);
+      onRefresh();
+    } finally {
+      setDeletingIds((s) => {
+        const next = new Set(s);
+        next.delete(d.id);
+        return next;
+      });
+    }
   };
 
   if (active.length === 0) {
@@ -119,21 +166,29 @@ export function DownloadsTable({ downloads, onRefresh }: DownloadsTableProps) {
                   : '-'}
               </td>
               <td className="py-2">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   {d.status === 'completed' && !d.isActive && (
                     <button
                       onClick={() => handleActivate(d.id)}
-                      className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                      disabled={
+                        activatingIds.has(d.id) || deletingIds.has(d.id)
+                      }
+                      className="text-blue-600 hover:text-blue-800 text-xs font-medium disabled:text-gray-400 disabled:cursor-not-allowed inline-flex items-center gap-1"
                     >
-                      Activate
+                      {activatingIds.has(d.id) && <Spinner />}
+                      {activatingIds.has(d.id) ? 'Activating…' : 'Activate'}
                     </button>
                   )}
                   {!d.isActive && d.status !== 'downloading' && (
                     <button
                       onClick={() => handleDelete(d)}
-                      className="text-red-600 hover:text-red-800 text-xs font-medium"
+                      disabled={
+                        deletingIds.has(d.id) || activatingIds.has(d.id)
+                      }
+                      className="text-red-600 hover:text-red-800 text-xs font-medium disabled:text-gray-400 disabled:cursor-not-allowed inline-flex items-center gap-1"
                     >
-                      Delete
+                      {deletingIds.has(d.id) && <Spinner />}
+                      {deletingIds.has(d.id) ? 'Deleting…' : 'Delete'}
                     </button>
                   )}
                 </div>
