@@ -1,12 +1,14 @@
 import { IsOptional, IsString, IsInt, Min, Matches } from 'class-validator';
 
+const CRON_FIELD = `(\\*(\\/\\d+)?|\\d+(-\\d+)?(\\/\\d+)?(,\\d+(-\\d+)?(\\/\\d+)?)*)`;
+const CRON_REGEX = new RegExp(
+  `^${CRON_FIELD}\\s+${CRON_FIELD}\\s+${CRON_FIELD}\\s+${CRON_FIELD}\\s+${CRON_FIELD}$`,
+);
+
 export class UpdateSettingsDto {
   @IsOptional()
   @IsString()
-  @Matches(
-    /^(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)$/,
-    { message: 'Invalid cron expression' },
-  )
+  @Matches(CRON_REGEX, { message: 'Invalid cron expression' })
   cronExpression?: string;
 
   @IsOptional()
