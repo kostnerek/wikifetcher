@@ -1,17 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Dockerode = require('dockerode');
 import * as path from 'path';
+import * as os from 'os';
 
 @Injectable()
-export class KiwixService {
+export class KiwixService implements OnModuleInit {
   private readonly logger = new Logger(KiwixService.name);
   private readonly docker: Dockerode;
   private readonly containerName: string;
   private readonly zimDataPath: string;
   private readonly kiwixImage: string;
   private readonly kiwixPort: string;
-  private readonly zimVolumePath: string;
+  private zimVolumePath: string;
   private readonly dockerNetwork: string;
 
   constructor(private readonly config: ConfigService) {
@@ -22,6 +23,26 @@ export class KiwixService {
     this.kiwixPort = this.config.get<string>('kiwixPort')!;
     this.zimVolumePath = this.config.get<string>('zimVolumePath')!;
     this.dockerNetwork = this.config.get<string>('dockerNetwork')!;
+  }
+
+  async onModuleInit() {
+    try {
+      const self = this.docker.getContainer(os.hostname());
+      const info = await self.inspect();
+      const mount = info.Mounts.find((m) => m.Destination === this.zimDataPath);
+      if (mount?.Source) {
+        this.zimVolumePath = mount.Source;
+        this.logger.log(`Discovered ZIM host path: ${this.zimVolumePath}`);
+      } else {
+        this.logger.warn(
+          `Could not auto-discover ZIM host path; falling back to ${this.zimVolumePath}`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `ZIM host path discovery failed: ${(err as Error).message}. Using ${this.zimVolumePath}`,
+      );
+    }
   }
 
   buildKiwixArgs(relativePaths: string[]): string[] {

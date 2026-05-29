@@ -10,11 +10,11 @@ services:
       DEFAULT_CRON: "${DEFAULT_CRON:-0 3 * * 0}"
       DEFAULT_MAX_VERSIONS: "${DEFAULT_MAX_VERSIONS:-3}"
       KIWIX_PORT: "${KIWIX_PORT:-8080}"
-      ZIM_VOLUME_PATH: wikifetcher_zim-data
+      ZIM_VOLUME_PATH: "${ZIM_DATA_HOST:-./data/zim}"
       DOCKER_NETWORK: wikifetcher_default
     volumes:
-      - zim-data:/data/zim
-      - db-data:/data/db
+      - "${ZIM_DATA_HOST:-./data/zim}:/data/zim"
+      - "${DB_DATA_HOST:-./data/db}:/data/db"
       - /var/run/docker.sock:/var/run/docker.sock:ro
     expose:
       - "3000"
@@ -35,10 +35,6 @@ services:
     ports:
       - "${KIWIX_PORT:-8080}:8080"
     volumes:
-      - zim-data:/data/zim:ro
+      - "${ZIM_DATA_HOST:-./data/zim}:/data/zim:ro"
     entrypoint: []
     command: ["sh", "-c", "if ls /data/zim/*/active.zim 1>/dev/null 2>&1; then exec kiwix-serve /data/zim/*/active.zim; else echo 'No ZIM files yet, waiting...' && sleep infinity; fi"]
-
-volumes:
-  zim-data:
-  db-data:

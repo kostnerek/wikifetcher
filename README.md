@@ -42,8 +42,21 @@ All variables are optional — sensible defaults are baked in.
 | `ADMIN_PORT`           | `8081`        | Host port for the admin panel          |
 | `DEFAULT_CRON`         | `0 3 * * 0`   | Initial schedule (Sun 3 AM)            |
 | `DEFAULT_MAX_VERSIONS` | `3`           | Versions to keep per language          |
+| `ZIM_DATA_HOST`        | `./data/zim`  | Host directory for ZIM file storage    |
+| `DB_DATA_HOST`         | `./data/db`   | Host directory for the SQLite database |
 
 Set them in `.env` next to `docker-compose.yml`. The cron expression and max-versions can also be changed live from the admin panel.
+
+### Where do the ZIM files end up?
+
+`ZIM_DATA_HOST` is bind-mounted into both the API and Kiwix containers, so the files live on your host filesystem at the path you choose — not inside an opaque Docker volume. The default `./data/zim` is convenient but will fill up your project directory; for a real home server, point it at a disk with room to spare:
+
+```env
+ZIM_DATA_HOST=/mnt/storage/wikifetcher/zim
+DB_DATA_HOST=/mnt/storage/wikifetcher/db
+```
+
+The API auto-discovers the host path from its own mount table, so the Kiwix activate-restart flow works no matter what path you pick.
 
 ## Architecture
 

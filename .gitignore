@@ -5,3 +5,4 @@ dist/
 *.zim
 .DS_Store
 ui/tsconfig.tsbuildinfo
+data/
