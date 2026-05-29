@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 
 export interface ZimEntry {
   fileName: string;
@@ -9,17 +13,32 @@ export interface ZimEntry {
 
 @Injectable()
 export class ZimCatalogService {
+  private readonly logger = new Logger(ZimCatalogService.name);
   private readonly baseUrl = 'https://download.kiwix.org/zim/wikipedia';
 
   async getAvailable(lang: string): Promise<ZimEntry[]> {
-    const response = await fetch(`${this.baseUrl}/`);
-    const html = await response.text();
+    let html: string;
+    try {
+      const response = await fetch(`${this.baseUrl}/`);
+      if (!response.ok) {
+        this.logger.error(`Kiwix catalog returned ${response.status}`);
+        throw new ServiceUnavailableException('Kiwix catalog unavailable');
+      }
+      html = await response.text();
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err;
+      this.logger.error(
+        `Failed to fetch Kiwix catalog: ${(err as Error).message}`,
+      );
+      throw new ServiceUnavailableException('Kiwix catalog unreachable');
+    }
     return this.parseDirectoryListing(html, lang);
   }
 
   parseDirectoryListing(html: string, lang: string): ZimEntry[] {
+    const safeLang = this.escapeRegex(lang);
     const regex = new RegExp(
-      `<a href="(wikipedia_${lang}_[^"]+\\.zim)">[^<]+</a>`,
+      `<a href="(wikipedia_${safeLang}_[^"]+\\.zim)">[^<]+</a>`,
       'g',
     );
     const entries: ZimEntry[] = [];
@@ -37,5 +56,9 @@ export class ZimCatalogService {
     }
 
     return entries;
+  }
+
+  private escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 }

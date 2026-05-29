@@ -1,12 +1,13 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ZimCatalogService } from './zim-catalog.service';
+import { AvailableQueryDto } from './dto/available-query.dto';
 
 @Controller('api/zim')
 export class ZimCatalogController {
   constructor(private readonly zimCatalogService: ZimCatalogService) {}
 
   @Get('available')
-  getAvailable(@Query('lang') lang: string) {
-    return this.zimCatalogService.getAvailable(lang);
+  getAvailable(@Query() query: AvailableQueryDto) {
+    return this.zimCatalogService.getAvailable(query.lang);
   }
 }
