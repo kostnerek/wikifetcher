@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
+import { SchedulerService } from '../scheduler/scheduler.service';
 
 describe('SettingsController', () => {
   let controller: SettingsController;
@@ -22,11 +23,17 @@ describe('SettingsController', () => {
     }),
   };
 
+  const mockSchedulerService = {
+    getNextRun: jest.fn().mockReturnValue(new Date('2026-06-01T03:00:00Z')),
+    registerCronJob: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SettingsController],
       providers: [
         { provide: SettingsService, useValue: mockSettingsService },
+        { provide: SchedulerService, useValue: mockSchedulerService },
       ],
     }).compile();
 
@@ -34,16 +41,18 @@ describe('SettingsController', () => {
     service = module.get<SettingsService>(SettingsService);
   });
 
-  it('GET /api/settings returns current settings', async () => {
+  it('GET /api/settings returns settings with nextRun', async () => {
     const result = await controller.get();
-    expect(result).toEqual(mockSettings);
-    expect(service.get).toHaveBeenCalled();
+    expect(result.cronExpression).toBe('0 3 * * 0');
+    expect(result.nextRun).toBeDefined();
   });
 
-  it('PUT /api/settings updates and returns settings', async () => {
+  it('PUT /api/settings updates settings and restarts scheduler', async () => {
     const dto = { cronExpression: '0 4 * * 1' };
     const result = await controller.update(dto);
     expect(result.cronExpression).toBe('0 4 * * 1');
-    expect(service.update).toHaveBeenCalledWith(dto);
+    expect(mockSchedulerService.registerCronJob).toHaveBeenCalledWith(
+      '0 4 * * 1',
+    );
   });
 });
