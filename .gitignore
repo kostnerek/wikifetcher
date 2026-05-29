@@ -4,3 +4,4 @@ dist/
 *.sqlite
 *.zim
 .DS_Store
+ui/tsconfig.tsbuildinfo
