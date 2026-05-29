@@ -127,10 +127,21 @@ export class DownloadsService {
     if (download.isActive) {
       throw new BadRequestException('Cannot delete the active download');
     }
+    if (download.status === DownloadStatus.DELETING) {
+      throw new BadRequestException('Download is already being deleted');
+    }
 
-    const fullPath = path.join(this.zimDataPath, download.filePath);
-    await fs.rm(fullPath, { force: true });
-    await this.downloadRepo.remove(download);
+    const priorStatus = download.status;
+    await this.downloadRepo.update(id, { status: DownloadStatus.DELETING });
+
+    try {
+      const fullPath = path.join(this.zimDataPath, download.filePath);
+      await fs.rm(fullPath, { force: true });
+      await this.downloadRepo.remove(download);
+    } catch (err) {
+      await this.downloadRepo.update(id, { status: priorStatus });
+      throw err;
+    }
   }
 
   async triggerDownloads(): Promise<void> {
@@ -282,6 +293,9 @@ export class DownloadsService {
 
     const toDelete = completed.slice(maxVersions).filter((d) => !d.isActive);
     for (const dl of toDelete) {
+      await this.downloadRepo.update(dl.id, {
+        status: DownloadStatus.DELETING,
+      });
       const fullPath = path.join(this.zimDataPath, dl.filePath);
       await fs.rm(fullPath, { force: true });
       await this.downloadRepo.remove(dl);

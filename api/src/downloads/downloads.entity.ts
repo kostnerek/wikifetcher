@@ -13,6 +13,7 @@ export enum DownloadStatus {
   DOWNLOADING = 'downloading',
   COMPLETED = 'completed',
   FAILED = 'failed',
+  DELETING = 'deleting',
 }
 
 @Entity('downloads')

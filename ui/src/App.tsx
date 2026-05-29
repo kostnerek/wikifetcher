@@ -43,7 +43,10 @@ export default function App() {
   }, [loadAll]);
 
   const hasActiveDownload = downloads.some(
-    (d) => d.status === 'downloading' || d.status === 'pending',
+    (d) =>
+      d.status === 'downloading' ||
+      d.status === 'pending' ||
+      d.status === 'deleting',
   );
 
   useEffect(() => {

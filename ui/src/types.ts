@@ -24,7 +24,7 @@ export interface Download {
   fileName: string;
   fileSize: number;
   filePath: string;
-  status: 'pending' | 'downloading' | 'completed' | 'failed';
+  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'deleting';
   progress: number;
   speedBps: number | null;
   isActive: boolean;

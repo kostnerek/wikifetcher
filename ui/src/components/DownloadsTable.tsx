@@ -46,11 +46,13 @@ function statusBadge(status: Download['status']) {
     downloading: 'bg-blue-100 text-blue-800',
     completed: 'bg-green-100 text-green-800',
     failed: 'bg-red-100 text-red-800',
+    deleting: 'bg-orange-100 text-orange-800',
   };
   return (
     <span
-      className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[status]}`}
+      className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[status]} inline-flex items-center gap-1`}
     >
+      {status === 'deleting' && <Spinner />}
       {status}
     </span>
   );
@@ -69,7 +71,8 @@ export function DownloadsTable({ downloads, onRefresh }: DownloadsTableProps) {
     (d) =>
       d.status === 'completed' ||
       d.status === 'downloading' ||
-      d.status === 'pending',
+      d.status === 'pending' ||
+      d.status === 'deleting',
   );
 
   const handleActivate = async (id: number) => {
@@ -179,18 +182,20 @@ export function DownloadsTable({ downloads, onRefresh }: DownloadsTableProps) {
                       {activatingIds.has(d.id) ? 'Activating…' : 'Activate'}
                     </button>
                   )}
-                  {!d.isActive && d.status !== 'downloading' && (
-                    <button
-                      onClick={() => handleDelete(d)}
-                      disabled={
-                        deletingIds.has(d.id) || activatingIds.has(d.id)
-                      }
-                      className="text-red-600 hover:text-red-800 text-xs font-medium disabled:text-gray-400 disabled:cursor-not-allowed inline-flex items-center gap-1"
-                    >
-                      {deletingIds.has(d.id) && <Spinner />}
-                      {deletingIds.has(d.id) ? 'Deleting…' : 'Delete'}
-                    </button>
-                  )}
+                  {!d.isActive &&
+                    d.status !== 'downloading' &&
+                    d.status !== 'deleting' && (
+                      <button
+                        onClick={() => handleDelete(d)}
+                        disabled={
+                          deletingIds.has(d.id) || activatingIds.has(d.id)
+                        }
+                        className="text-red-600 hover:text-red-800 text-xs font-medium disabled:text-gray-400 disabled:cursor-not-allowed inline-flex items-center gap-1"
+                      >
+                        {deletingIds.has(d.id) && <Spinner />}
+                        {deletingIds.has(d.id) ? 'Deleting…' : 'Delete'}
+                      </button>
+                    )}
                 </div>
               </td>
             </tr>
