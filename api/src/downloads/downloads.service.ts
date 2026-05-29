@@ -198,36 +198,36 @@ export class DownloadsService {
         response.headers.get('content-length') || '0',
         10,
       );
+      if (totalSize > 0) {
+        await this.downloadRepo.update(download.id, { fileSize: totalSize });
+      }
+      const SAMPLE_INTERVAL_MS = 1000;
       let downloadedSize = 0;
-      let lastProgressUpdate = 0;
       let lastSampleBytes = 0;
       let lastSampleTime = Date.now();
 
       const progressTracker = new Transform({
         transform: (chunk: Buffer, _enc, cb) => {
           downloadedSize += chunk.length;
-          if (totalSize > 0) {
-            const progress = Math.floor((downloadedSize / totalSize) * 100);
-            if (progress - lastProgressUpdate >= 5) {
-              lastProgressUpdate = progress;
-              const now = Date.now();
-              const elapsedMs = now - lastSampleTime;
-              const speedBps =
-                elapsedMs > 0
-                  ? Math.round(
-                      ((downloadedSize - lastSampleBytes) * 1000) / elapsedMs,
-                    )
-                  : null;
-              lastSampleBytes = downloadedSize;
-              lastSampleTime = now;
-              this.downloadRepo
-                .update(download.id, { progress, speedBps })
-                .catch((err) =>
-                  this.logger.warn(
-                    `progress update failed: ${(err as Error).message}`,
-                  ),
-                );
-            }
+          const now = Date.now();
+          const elapsedMs = now - lastSampleTime;
+          if (elapsedMs >= SAMPLE_INTERVAL_MS) {
+            const speedBps = Math.round(
+              ((downloadedSize - lastSampleBytes) * 1000) / elapsedMs,
+            );
+            const progress =
+              totalSize > 0
+                ? Math.floor((downloadedSize / totalSize) * 100)
+                : 0;
+            lastSampleBytes = downloadedSize;
+            lastSampleTime = now;
+            this.downloadRepo
+              .update(download.id, { progress, speedBps })
+              .catch((err) =>
+                this.logger.warn(
+                  `progress update failed: ${(err as Error).message}`,
+                ),
+              );
           }
           cb(null, chunk);
         },
@@ -250,6 +250,14 @@ export class DownloadsService {
 
       this.logger.log(`Downloaded ${variant.fileName}`);
       await this.cleanupOldVersions(lang.id);
+
+      try {
+        await this.activate(download.id);
+      } catch (err) {
+        this.logger.warn(
+          `Auto-activate failed for ${variant.fileName}: ${(err as Error).message}`,
+        );
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await this.downloadRepo.update(download.id, {

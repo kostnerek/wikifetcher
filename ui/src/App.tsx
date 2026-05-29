@@ -40,9 +40,16 @@ export default function App() {
 
   useEffect(() => {
     loadAll();
-    const interval = setInterval(loadDownloads, 10000);
+  }, [loadAll]);
+
+  const hasActiveDownload = downloads.some(
+    (d) => d.status === 'downloading' || d.status === 'pending',
+  );
+
+  useEffect(() => {
+    const interval = setInterval(loadDownloads, hasActiveDownload ? 1500 : 10000);
     return () => clearInterval(interval);
-  }, [loadAll, loadDownloads]);
+  }, [loadDownloads, hasActiveDownload]);
 
   const handleTriggerDownload = async () => {
     setDownloading(true);
