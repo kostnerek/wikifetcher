@@ -1,5 +1,6 @@
-import { IsOptional, IsString, IsInt, Min } from 'class-validator';
+import { IsOptional, IsInt, Min, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
+import { DownloadStatus } from '../downloads.entity';
 
 export class QueryDownloadsDto {
   @IsOptional()
@@ -8,8 +9,8 @@ export class QueryDownloadsDto {
   languageId?: number;
 
   @IsOptional()
-  @IsString()
-  status?: string;
+  @IsEnum(DownloadStatus)
+  status?: DownloadStatus;
 
   @IsOptional()
   @Type(() => Number)

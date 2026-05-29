@@ -16,6 +16,8 @@ import { SettingsService } from '../settings/settings.service';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
+import { pipeline } from 'stream/promises';
+import { Readable, Transform } from 'stream';
 
 @Injectable()
 export class DownloadsService {
@@ -72,6 +74,11 @@ export class DownloadsService {
       throw new BadRequestException('Can only activate completed downloads');
     }
 
+    // capture prior active for rollback
+    const priorActive = await this.downloadRepo.find({
+      where: { languageId: download.languageId, isActive: true },
+    });
+
     await this.downloadRepo.update(
       { languageId: download.languageId, isActive: true },
       { isActive: false },
@@ -79,22 +86,34 @@ export class DownloadsService {
     download.isActive = true;
     await this.downloadRepo.save(download);
 
-    const symlinkPath = path.join(
-      this.zimDataPath,
-      download.language.code,
-      'active.zim',
-    );
-    await fs.rm(symlinkPath, { force: true });
-    await fs.symlink(
-      path.join(this.zimDataPath, download.filePath),
-      symlinkPath,
-    );
+    try {
+      const symlinkPath = path.join(
+        this.zimDataPath,
+        download.language.code,
+        'active.zim',
+      );
+      await fs.rm(symlinkPath, { force: true });
+      await fs.symlink(
+        path.join(this.zimDataPath, download.filePath),
+        symlinkPath,
+      );
 
-    const allActive = await this.downloadRepo.find({
-      where: { isActive: true },
-      relations: ['language'],
-    });
-    await this.kiwixService.restart(allActive.map((d) => d.filePath));
+      const allActive = await this.downloadRepo.find({
+        where: { isActive: true },
+        relations: ['language'],
+      });
+      await this.kiwixService.restart(allActive.map((d) => d.filePath));
+    } catch (err) {
+      this.logger.error(
+        `Activation failed for #${id}, rolling back: ${(err as Error).message}`,
+      );
+      download.isActive = false;
+      await this.downloadRepo.save(download);
+      for (const p of priorActive) {
+        await this.downloadRepo.update(p.id, { isActive: true });
+      }
+      throw err;
+    }
 
     return download;
   }
@@ -116,111 +135,113 @@ export class DownloadsService {
       this.logger.warn('Download already in progress, skipping');
       return;
     }
+    this.isDownloading = true;
+    try {
+      const languages = await this.languageRepo.find({
+        where: { enabled: true },
+      });
 
-    const languages = await this.languageRepo.find({
-      where: { enabled: true },
-    });
-
-    for (const lang of languages) {
-      await this.downloadForLanguage(lang);
+      for (const lang of languages) {
+        await this.downloadForLanguage(lang);
+      }
+    } finally {
+      this.isDownloading = false;
     }
   }
 
   private async downloadForLanguage(lang: Language): Promise<void> {
-    this.isDownloading = true;
+    const available = await this.zimCatalogService.getAvailable(lang.code);
+    const variant = lang.withImages
+      ? available.find((e) => e.hasImages)
+      : available.find((e) => !e.hasImages);
 
-    try {
-      const available = await this.zimCatalogService.getAvailable(lang.code);
-      const variant = lang.withImages
-        ? available.find((e) => e.hasImages)
-        : available.find((e) => !e.hasImages);
+    if (!variant) {
+      this.logger.warn(`No ZIM file found for ${lang.code}`);
+      return;
+    }
 
-      if (!variant) {
-        this.logger.warn(`No ZIM file found for ${lang.code}`);
-        return;
-      }
-
-      const existing = await this.downloadRepo.findOne({
-        where: {
-          languageId: lang.id,
-          fileName: variant.fileName,
-          status: DownloadStatus.COMPLETED,
-        },
-      });
-      if (existing) {
-        this.logger.log(`Already have ${variant.fileName}, skipping`);
-        return;
-      }
-
-      const filePath = path.join(lang.code, variant.fileName);
-      const fullPath = path.join(this.zimDataPath, filePath);
-
-      await fs.mkdir(path.dirname(fullPath), { recursive: true });
-
-      const download = await this.downloadRepo.save({
+    const existing = await this.downloadRepo.findOne({
+      where: {
         languageId: lang.id,
         fileName: variant.fileName,
-        filePath,
-        status: DownloadStatus.DOWNLOADING,
-        startedAt: new Date(),
-      });
+        status: DownloadStatus.COMPLETED,
+      },
+    });
+    if (existing) {
+      this.logger.log(`Already have ${variant.fileName}, skipping`);
+      return;
+    }
 
-      try {
-        const response = await fetch(variant.url);
-        if (!response.ok || !response.body) {
-          throw new Error(`HTTP ${response.status}`);
-        }
+    const filePath = path.join(lang.code, variant.fileName);
+    const fullPath = path.join(this.zimDataPath, filePath);
 
-        const totalSize = parseInt(
-          response.headers.get('content-length') || '0',
-          10,
-        );
-        let downloadedSize = 0;
-        let lastProgressUpdate = 0;
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
 
-        const fileStream = fsSync.createWriteStream(fullPath);
-        const reader = response.body.getReader();
+    const download = await this.downloadRepo.save({
+      languageId: lang.id,
+      fileName: variant.fileName,
+      filePath,
+      status: DownloadStatus.DOWNLOADING,
+      startedAt: new Date(),
+    });
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+    try {
+      const response = await fetch(variant.url);
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}`);
+      }
 
-          fileStream.write(value);
-          downloadedSize += value.length;
+      const totalSize = parseInt(
+        response.headers.get('content-length') || '0',
+        10,
+      );
+      let downloadedSize = 0;
+      let lastProgressUpdate = 0;
 
+      const progressTracker = new Transform({
+        transform: (chunk: Buffer, _enc, cb) => {
+          downloadedSize += chunk.length;
           if (totalSize > 0) {
             const progress = Math.floor((downloadedSize / totalSize) * 100);
             if (progress - lastProgressUpdate >= 5) {
-              await this.downloadRepo.update(download.id, { progress });
               lastProgressUpdate = progress;
+              this.downloadRepo
+                .update(download.id, { progress })
+                .catch((err) =>
+                  this.logger.warn(
+                    `progress update failed: ${(err as Error).message}`,
+                  ),
+                );
             }
           }
-        }
+          cb(null, chunk);
+        },
+      });
 
-        fileStream.end();
-        await new Promise<void>((resolve) => fileStream.on('finish', resolve));
+      await pipeline(
+        Readable.fromWeb(response.body as any),
+        progressTracker,
+        fsSync.createWriteStream(fullPath),
+      );
 
-        const stat = await fs.stat(fullPath);
-        await this.downloadRepo.update(download.id, {
-          status: DownloadStatus.COMPLETED,
-          progress: 100,
-          fileSize: stat.size,
-          completedAt: new Date(),
-        });
+      const stat = await fs.stat(fullPath);
+      await this.downloadRepo.update(download.id, {
+        status: DownloadStatus.COMPLETED,
+        progress: 100,
+        fileSize: stat.size,
+        completedAt: new Date(),
+      });
 
-        this.logger.log(`Downloaded ${variant.fileName}`);
-        await this.cleanupOldVersions(lang.id);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        await this.downloadRepo.update(download.id, {
-          status: DownloadStatus.FAILED,
-          errorMessage: message,
-        });
-        await fs.rm(fullPath, { force: true });
-        this.logger.error(`Failed to download ${variant.fileName}: ${message}`);
-      }
-    } finally {
-      this.isDownloading = false;
+      this.logger.log(`Downloaded ${variant.fileName}`);
+      await this.cleanupOldVersions(lang.id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await this.downloadRepo.update(download.id, {
+        status: DownloadStatus.FAILED,
+        errorMessage: message,
+      });
+      await fs.rm(fullPath, { force: true });
+      this.logger.error(`Failed to download ${variant.fileName}: ${message}`);
     }
   }
 
