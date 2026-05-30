@@ -63,6 +63,30 @@ describe('ZimCatalogService', () => {
     );
   });
 
+  it('parseDirectoryListing populates flavor, isFullDump, and date', () => {
+    const html = `
+      <a href="wikipedia_en_all_maxi_2026-05.zim">wikipedia_en_all_maxi_2026-05.zim</a> 29-May-2026 10:00  100
+      <a href="wikipedia_en_100_2026-05.zim">wikipedia_en_100_2026-05.zim</a> 29-May-2026 10:00  100
+      <a href="wikipedia_en_all_nopic_2026-05.zim">wikipedia_en_all_nopic_2026-05.zim</a> 29-May-2026 10:00  100
+      <a href="wikipedia_en_all_mini_2026-05.zim">wikipedia_en_all_mini_2026-05.zim</a> 29-May-2026 10:00  100
+    `;
+    const entries = service.parseDirectoryListing(html, 'en');
+    const byName = Object.fromEntries(entries.map((e) => [e.fileName, e]));
+
+    expect(byName['wikipedia_en_all_maxi_2026-05.zim'].flavor).toBe('maxi');
+    expect(byName['wikipedia_en_all_maxi_2026-05.zim'].isFullDump).toBe(true);
+    expect(byName['wikipedia_en_all_maxi_2026-05.zim'].date).toBe('2026-05');
+
+    expect(byName['wikipedia_en_100_2026-05.zim'].flavor).toBe('plain');
+    expect(byName['wikipedia_en_100_2026-05.zim'].isFullDump).toBe(false);
+
+    expect(byName['wikipedia_en_all_nopic_2026-05.zim'].flavor).toBe('nopic');
+    expect(byName['wikipedia_en_all_nopic_2026-05.zim'].hasImages).toBe(false);
+
+    expect(byName['wikipedia_en_all_mini_2026-05.zim'].flavor).toBe('mini');
+    expect(byName['wikipedia_en_all_mini_2026-05.zim'].hasImages).toBe(true);
+  });
+
   it('parseDirectoryListing is safe against regex-special characters in lang', () => {
     const html = `
       <a href="wikipedia_en_all_maxi_2026-05.zim">wikipedia_en_all_maxi_2026-05.zim</a> 29-May-2026 10:00  100

@@ -13,7 +13,11 @@ import { Download, DownloadStatus } from './downloads.entity';
 import { QueryDownloadsDto } from './dto/query-downloads.dto';
 import { Language } from '../languages/languages.entity';
 import { KiwixService } from '../kiwix/kiwix.service';
-import { ZimCatalogService } from '../zim-catalog/zim-catalog.service';
+import {
+  ZimCatalogService,
+  ZimEntry,
+  ZimFlavor,
+} from '../zim-catalog/zim-catalog.service';
 import { SettingsService } from '../settings/settings.service';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
@@ -165,14 +169,15 @@ export class DownloadsService {
 
   private async downloadForLanguage(lang: Language): Promise<void> {
     const available = await this.zimCatalogService.getAvailable(lang.code);
-    const variant = lang.withImages
-      ? available.find((e) => e.hasImages)
-      : available.find((e) => !e.hasImages);
+    const variant = this.pickVariant(available, lang.withImages);
 
     if (!variant) {
       this.logger.warn(`No ZIM file found for ${lang.code}`);
       return;
     }
+    this.logger.log(
+      `Selected ${variant.fileName} (flavor=${variant.flavor}, fullDump=${variant.isFullDump}) for ${lang.code}`,
+    );
 
     const existing = await this.downloadRepo.findOne({
       where: {
@@ -279,6 +284,40 @@ export class DownloadsService {
       await fs.rm(fullPath, { force: true });
       this.logger.error(`Failed to download ${variant.fileName}: ${message}`);
     }
+  }
+
+  pickVariant(
+    entries: ZimEntry[],
+    withImages: boolean,
+  ): ZimEntry | undefined {
+    if (entries.length === 0) return undefined;
+
+    const imageFilter = (e: ZimEntry): boolean =>
+      withImages ? e.hasImages : !e.hasImages;
+
+    const flavorPriority: ZimFlavor[] = withImages
+      ? ['maxi', 'mini', 'plain', 'nopic']
+      : ['nopic', 'mini', 'plain', 'maxi'];
+
+    const pools: ZimEntry[][] = [
+      entries.filter((e) => e.isFullDump && imageFilter(e)),
+      entries.filter((e) => e.isFullDump),
+      entries.filter(imageFilter),
+      entries,
+    ];
+
+    for (const pool of pools) {
+      if (pool.length === 0) continue;
+      for (const flavor of flavorPriority) {
+        const matches = pool.filter((e) => e.flavor === flavor);
+        if (matches.length === 0) continue;
+        matches.sort((a, b) => b.date.localeCompare(a.date));
+        return matches[0];
+      }
+      const sorted = [...pool].sort((a, b) => b.date.localeCompare(a.date));
+      return sorted[0];
+    }
+    return undefined;
   }
 
   private async cleanupOldVersions(languageId: number): Promise<void> {

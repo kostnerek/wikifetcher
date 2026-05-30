@@ -4,10 +4,15 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 
+export type ZimFlavor = 'maxi' | 'mini' | 'nopic' | 'plain';
+
 export interface ZimEntry {
   fileName: string;
   url: string;
   hasImages: boolean;
+  isFullDump: boolean;
+  flavor: ZimFlavor;
+  date: string;
   lang: string;
 }
 
@@ -55,16 +60,30 @@ export class ZimCatalogService {
       `<a href="(wikipedia_${safeLang}_[^"]+\\.zim)">[^<]+</a>`,
       'g',
     );
+    const fullDumpRe = new RegExp(`^wikipedia_${safeLang}_all_`);
     const entries: ZimEntry[] = [];
     let match: RegExpExecArray | null;
 
     while ((match = regex.exec(html)) !== null) {
       const fileName = match[1];
-      const hasImages = !fileName.includes('nopic');
+      const flavor: ZimFlavor = fileName.includes('_maxi_')
+        ? 'maxi'
+        : fileName.includes('_mini_')
+          ? 'mini'
+          : fileName.includes('_nopic_')
+            ? 'nopic'
+            : 'plain';
+      const hasImages = flavor !== 'nopic';
+      const isFullDump = fullDumpRe.test(fileName);
+      const dateMatch = fileName.match(/_(\d{4}-\d{2})\.zim$/);
+      const date = dateMatch ? dateMatch[1] : '';
       entries.push({
         fileName,
         url: `${this.baseUrl}/${fileName}`,
         hasImages,
+        isFullDump,
+        flavor,
+        date,
         lang,
       });
     }

@@ -208,6 +208,103 @@ describe('DownloadsService', () => {
     });
   });
 
+  describe('pickVariant', () => {
+    const make = (overrides: Partial<any>) => ({
+      fileName: 'wikipedia_en_all_maxi_2026-05.zim',
+      url: '',
+      hasImages: true,
+      isFullDump: true,
+      flavor: 'maxi' as const,
+      date: '2026-05',
+      lang: 'en',
+      ...overrides,
+    });
+
+    it('prefers full dump (_all_) over topical builds like _100_', () => {
+      const entries = [
+        make({
+          fileName: 'wikipedia_en_100_2026-05.zim',
+          isFullDump: false,
+          flavor: 'plain',
+        }),
+        make({
+          fileName: 'wikipedia_en_all_maxi_2026-05.zim',
+          isFullDump: true,
+          flavor: 'maxi',
+        }),
+      ];
+      const result = service.pickVariant(entries, true);
+      expect(result?.fileName).toBe('wikipedia_en_all_maxi_2026-05.zim');
+    });
+
+    it('with images: prefers maxi over mini', () => {
+      const entries = [
+        make({
+          fileName: 'wikipedia_en_all_mini_2026-05.zim',
+          flavor: 'mini',
+        }),
+        make({
+          fileName: 'wikipedia_en_all_maxi_2026-05.zim',
+          flavor: 'maxi',
+        }),
+      ];
+      const result = service.pickVariant(entries, true);
+      expect(result?.flavor).toBe('maxi');
+    });
+
+    it('without images: prefers nopic over other flavors', () => {
+      const entries = [
+        make({
+          fileName: 'wikipedia_en_all_maxi_2026-05.zim',
+          flavor: 'maxi',
+          hasImages: true,
+        }),
+        make({
+          fileName: 'wikipedia_en_all_nopic_2026-05.zim',
+          flavor: 'nopic',
+          hasImages: false,
+        }),
+      ];
+      const result = service.pickVariant(entries, false);
+      expect(result?.flavor).toBe('nopic');
+    });
+
+    it('picks the latest date among matches', () => {
+      const entries = [
+        make({
+          fileName: 'wikipedia_en_all_maxi_2026-03.zim',
+          date: '2026-03',
+        }),
+        make({
+          fileName: 'wikipedia_en_all_maxi_2026-05.zim',
+          date: '2026-05',
+        }),
+        make({
+          fileName: 'wikipedia_en_all_maxi_2026-04.zim',
+          date: '2026-04',
+        }),
+      ];
+      const result = service.pickVariant(entries, true);
+      expect(result?.date).toBe('2026-05');
+    });
+
+    it('falls back to non-full-dump when no full dump exists', () => {
+      const entries = [
+        make({
+          fileName: 'wikipedia_en_100_2026-05.zim',
+          isFullDump: false,
+          flavor: 'plain',
+        }),
+      ];
+      const result = service.pickVariant(entries, true);
+      expect(result?.fileName).toBe('wikipedia_en_100_2026-05.zim');
+    });
+
+    it('returns undefined for empty input', () => {
+      expect(service.pickVariant([], true)).toBeUndefined();
+    });
+  });
+
   describe('cleanupOldVersions', () => {
     it('never deletes the active download', async () => {
       mockSettingsService.get.mockResolvedValueOnce({ maxVersionsToKeep: 1 });
